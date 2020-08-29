@@ -1,0 +1,98 @@
+{{- $tier := "services" -}}
+{{- range $k, $v := $.Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $tier }}-{{ $.Values.general.product }}-{{ $k }}
+  labels:
+    environment: {{ $.Values.general.environment }}
+    product: {{ $.Values.general.product }}
+    service: {{ $tier }}-{{ $.Values.general.product }}-{{ $k }}
+spec:
+  replicas: {{ $v.replicaCount }}
+  selector:
+    matchLabels:
+      service: {{ $tier }}-{{ $.Values.general.product }}-{{ $k }}
+  template:
+    spec:
+      containers:
+        - name: "{{ $tier }}-{{ $k }}-cntr"
+          image: "{{ $.Values.image.registry }}{{ $v.image.repository }}:{{ $v.image.tag }}"
+          imagePullPolicy: "{{ $.Values.image.pullPolicy }}"
+          ports:
+          - containerPort: {{ $v.port }}
+            name: {{ $.Values.general.product }}-port-cntr
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: {{ if and $v.healthPort (not nil) }}{{ $v.healthPort }}{{ else }}{{ $.Values.general.product }}-port-cntr{{ end }}
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: {{ if and $v.healthPort (not nil) }}{{ $v.healthPort }}{{ else }}{{ $.Values.general.product }}-port-cntr{{ end }}
+              scheme: HTTP
+            initialDelaySeconds: 200
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            requests:
+              {{- if $v.resources.requests.memory }}
+              memory: {{ $v.resources.requests.memory }}
+              {{- end }}
+              {{- if $v.resources.requests.cpu }}
+              cpu: {{ $v.resources.requests.cpu }}
+              {{- end }}
+            limits:
+              {{- if $v.resources.limits.memory  }}
+              memory: {{ $v.resources.limits.memory }}
+              {{- end }}
+              {{- if $v.resources.limits.cpu }}
+              cpu: {{ $v.resources.limits.cpu }}
+              {{- end }}
+          envFrom:
+          - configMapRef:
+              name: config-services-{{ $.Values.general.product }}
+          env:
+            {{- range $kDep, $vDep := $v.dependencies }}
+            {{- if eq $vDep ( "MongoDb" ) }}
+            - name: MONGODB_HOST
+              value: '{{ $.Values.database.mongodb.host }}'
+            - name: MONGODB_PORT
+              value: '{{ $.Values.database.mongodb.port }}'
+            - name: MONGODB_USER
+              value: '{{ $.Values.database.mongodb.user }}'
+            - name: MONGODB_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets-{{ $.Values.general.product }}
+                  key: MONGODB_USER_PWD
+            {{- end }}
+            {{- if and $.Values.proxy.enabled (eq $vDep "Proxy") }}
+            - name: PROXY_HOST
+              value: '{{ $.Values.proxy.host }}'
+            - name: PROXY_PORT
+              value: '{{ $.Values.proxy.port }}'
+            - name: http_proxy
+              value: 'http://{{ $.Values.proxy.host }}:{{ $.Values.proxy.port }}'
+            - name: https_proxy
+              value: 'http://{{ $.Values.proxy.host }}:{{ $.Values.proxy.port }}'
+            - name: no_proxy
+              value: '{{ $.Values.proxy.noProxy }}'
+            {{- end }}
+            {{- end }}
+      {{- with $.Values.hostAliases }}
+      hostAliases:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      restartPolicy: Always
+---
+{{- end }}

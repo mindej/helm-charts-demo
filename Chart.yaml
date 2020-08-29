@@ -1,0 +1,12 @@
+apiVersion: v2
+name: demo-application
+description: Demo application to demonstrate helm charts deploment
+version: 0.0.1
+appVersion: 1.0.0
+type: application
+icon: data:image/svg+xml;base64,<**image goes here**>
+keywords:
+  - demo
+maintainers:
+  - name: Demo Name
+    email: demo@demo.com

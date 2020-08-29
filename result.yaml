@@ -1,0 +1,395 @@
+NAME: chart-1598700044
+LAST DEPLOYED: Sat Aug 29 14:20:45 2020
+NAMESPACE: default
+STATUS: pending-install
+REVISION: 1
+TEST SUITE: None
+USER-SUPPLIED VALUES:
+{}
+
+COMPUTED VALUES:
+apps:
+  frontend:
+    image:
+      repository: /helm-charts-demo/frontend
+      tag: 1.0.0
+    port: 3000
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 1
+        memory: 1000Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    service:
+      type: ClusterIP
+database:
+  mongodb:
+    dbName: test
+    host: dev-mongodb.demo-application
+    port: 27017
+    rootPwd: xxxx
+    rootUser: root
+    user: mongo
+    userPwd: user-xxxx
+general:
+  environment: DEV
+  product: foo
+image:
+  pullPolicy: IfNotPresent
+  registry: us.icr.io
+ingress:
+  enabled: true
+  host: dev1.app.domain.net
+  root: /dev
+log:
+  host: dev.log.service
+  port: 9090
+proxy:
+  enabled: true
+  host: proxy.demo.com
+  noProxy: localhost, 127.0.0.1, 0.0.0.0, app.demo.domain.net
+  port: 8080
+services:
+  api-1:
+    image:
+      repository: /helm-charts-demo/api-1
+      tag: 1.0.0
+    port: 8000
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    service:
+      type: ClusterIP
+  api-worker1:
+    dependencies:
+    - MongoDb
+    healthPort: 8080
+    image:
+      repository: /helm-charts-demo/api-worker-1
+      tag: 1.0.1
+    port: 3000
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 1500m
+        memory: 3Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    service:
+      type: ClusterIP
+  api-worker2:
+    dependencies:
+    - Proxy
+    image:
+      repository: /helm-charts-demo/api-worker-2
+      tag: 1.0.1
+    port: 3000
+    replicaCount: 1
+    resources:
+      limits:
+        cpu: 1500m
+        memory: 3Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+    service:
+      type: ClusterIP
+
+HOOKS:
+MANIFEST:
+---
+# Source: demo-application/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secrets-foo
+type: Opaque
+data:
+  MONGODB_ADMIN_PWD: eHh4eA==
+  MONGODB_USER_PWD: dXNlci14eHh4
+---
+# Source: demo-application/templates/configmap-app.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "config-apps-foo"
+data:
+  services.properties: |
+    API_1_CONTEXT_PATH=/dev/foo/services/api-1
+    API_WORKER1_CONTEXT_PATH=/dev/foo/services/api-worker1
+    API_WORKER2_CONTEXT_PATH=/dev/foo/services/api-worker2
+---
+# Source: demo-application/templates/configmap-service.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: config-services-foo
+  
+data:
+  ENVIRONMENT: DEV
+  API_1_SERVICE_REF: 'http://api-1'
+  API_1_SERVICE_REF_EX: 'https://dev1.app.domain.net/dev/foo/services/api-1'
+  API_WORKER1_SERVICE_REF: 'http://api-worker1'
+  API_WORKER1_SERVICE_REF_EX: 'https://dev1.app.domain.net/dev/foo/services/api-worker1'
+  API_WORKER2_SERVICE_REF: 'http://api-worker2'
+  API_WORKER2_SERVICE_REF_EX: 'https://dev1.app.domain.net/dev/foo/services/api-worker2'
+  LOG_SERVICE_HOST: 'dev.log.service'
+  LOG_SERVICE_PORT: '9090'
+---
+# Source: demo-application/templates/deployment-app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apps-foo-frontend
+  labels:
+    environment: DEV
+    product: foo
+    app: apps-foo-frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apps-foo-frontend
+  template:
+    spec:
+      containers:
+        - name: apps-frontend-cntr
+          image: "us.icr.io/helm-charts-demo/frontend:1.0.0"
+          imagePullPolicy: IfNotPresent
+          envFrom:
+          - configMapRef:
+              name: 'config-apps-foo'
+          env:
+          - name: PLATFORM_VERSION
+            value: "1.0.0"
+          ports:
+          - containerPort: 3000
+            name: foo-port-cntr
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /health
+              port: foo-port-cntr
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 60
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: 100Mi
+              cpu: 100m
+          volumeMounts:
+            - name: application-config 
+              mountPath: /config 
+              readOnly: true
+      volumes:
+      - name: application-config
+        configMap:
+          name: 'config-apps-foo'
+          items:
+          - key: services.properties
+            path: services.properties
+      restartPolicy: Always
+---
+# Source: demo-application/templates/deployment-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: services-foo-api-1
+  labels:
+    environment: DEV
+    product: foo
+    service: services-foo-api-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: services-foo-api-1
+  template:
+    spec:
+      containers:
+        - name: "services-api-1-cntr"
+          image: "us.icr.io/helm-charts-demo/api-1:1.0.0"
+          imagePullPolicy: "IfNotPresent"
+          ports:
+          - containerPort: 8000
+            name: foo-port-cntr
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: foo-port-cntr
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: foo-port-cntr
+              scheme: HTTP
+            initialDelaySeconds: 200
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 1000m
+          envFrom:
+          - configMapRef:
+              name: config-services-foo
+          env:
+      restartPolicy: Always
+---
+# Source: demo-application/templates/deployment-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: services-foo-api-worker1
+  labels:
+    environment: DEV
+    product: foo
+    service: services-foo-api-worker1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: services-foo-api-worker1
+  template:
+    spec:
+      containers:
+        - name: "services-api-worker1-cntr"
+          image: "us.icr.io/helm-charts-demo/api-worker-1:1.0.1"
+          imagePullPolicy: "IfNotPresent"
+          ports:
+          - containerPort: 3000
+            name: foo-port-cntr
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: 8080
+              scheme: HTTP
+            initialDelaySeconds: 200
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 3Gi
+              cpu: 1500m
+          envFrom:
+          - configMapRef:
+              name: config-services-foo
+          env:
+            - name: MONGODB_HOST
+              value: 'dev-mongodb.demo-application'
+            - name: MONGODB_PORT
+              value: '27017'
+            - name: MONGODB_USER
+              value: 'mongo'
+            - name: MONGODB_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets-foo
+                  key: MONGODB_USER_PWD
+      restartPolicy: Always
+---
+# Source: demo-application/templates/deployment-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: services-foo-api-worker2
+  labels:
+    environment: DEV
+    product: foo
+    service: services-foo-api-worker2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      service: services-foo-api-worker2
+  template:
+    spec:
+      containers:
+        - name: "services-api-worker2-cntr"
+          image: "us.icr.io/helm-charts-demo/api-worker-2:1.0.1"
+          imagePullPolicy: "IfNotPresent"
+          ports:
+          - containerPort: 3000
+            name: foo-port-cntr
+            protocol: TCP
+          readinessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: foo-port-cntr
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /health
+              port: foo-port-cntr
+              scheme: HTTP
+            initialDelaySeconds: 200
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 3Gi
+              cpu: 1500m
+          envFrom:
+          - configMapRef:
+              name: config-services-foo
+          env:
+            - name: PROXY_HOST
+              value: 'proxy.demo.com'
+            - name: PROXY_PORT
+              value: '8080'
+            - name: http_proxy
+              value: 'http://proxy.demo.com:8080'
+            - name: https_proxy
+              value: 'http://proxy.demo.com:8080'
+            - name: no_proxy
+              value: 'localhost, 127.0.0.1, 0.0.0.0, app.demo.domain.net'
+      restartPolicy: Always
+

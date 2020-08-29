@@ -1,0 +1,11 @@
+{{- $tier := "config-apps" -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "{{ $tier }}-{{ $.Values.general.product }}"
+data:
+  services.properties: |
+    {{- range $k, $v := $.Values.services }}
+    {{ $k | upper | replace "-" "_" }}_CONTEXT_PATH={{ $.Values.ingress.root }}/{{ $.Values.general.product }}/services/{{ $k }}
+    {{- end }}
+

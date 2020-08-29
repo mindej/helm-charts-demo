@@ -1,0 +1,19 @@
+
+{{- $tier := "config-services" -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $tier }}-{{ $.Values.general.product }}
+  
+data:
+  {{- if (eq $.Values.general.environment ("DEV")) }}
+  ENVIRONMENT: {{ $.Values.general.environment }}
+  {{- end }}
+  {{- range $k, $v := $.Values.services }}
+  {{ $k | upper | replace "-" "_"  }}_SERVICE_REF: 'http://{{ $k }}'
+  {{ $k | upper | replace "-" "_"  }}_SERVICE_REF_EX: 'https://{{ $.Values.ingress.host }}{{ $.Values.ingress.root }}/{{ $.Values.general.product }}/services/{{ $k }}'
+  {{- end }}
+  LOG_SERVICE_HOST: '{{ $.Values.log.host }}'
+  LOG_SERVICE_PORT: '{{ $.Values.log.port }}'
+  
+  

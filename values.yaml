@@ -1,0 +1,106 @@
+#General Configuration
+general:
+  environment: DEV
+  product: foo
+
+# General Image Configuration publix service from IKS (IBM Kubernetes Service)
+image:
+  pullPolicy: IfNotPresent
+  registry: us.icr.io
+
+# App Configuration
+apps:
+  frontend:
+    image:
+      repository: /helm-charts-demo/frontend
+      tag: 1.0.0
+    replicaCount: 1
+    port: 3000
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        memory: 100Mi
+        cpu: 100m
+      limits:
+        memory: 1000Mi
+        cpu: 1
+
+# Micro Service Configuration
+# Note: There are if conditions in the template referencing the service name
+services:
+  api-1:
+    image:
+      repository: /helm-charts-demo/api-1
+      tag: 1.0.0
+    replicaCount: 1
+    port: 8000
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 512Mi
+        cpu: 1000m
+  api-worker1:
+    image:
+      repository: /helm-charts-demo/api-worker-1
+      tag: 1.0.1
+    replicaCount: 1
+    port: 3000
+    healthPort: 8080
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 3Gi
+        cpu: 1500m
+    dependencies:
+      - MongoDb
+  api-worker2:
+    image:
+      repository: /helm-charts-demo/api-worker-2
+      tag: 1.0.1
+    replicaCount: 1
+    port: 3000
+    service:
+      type: ClusterIP
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 100m
+      limits:
+        memory: 3Gi
+        cpu: 1500m
+    dependencies:
+      - Proxy
+
+database:
+  mongodb:
+    host: dev-mongodb.demo-application
+    port: 27017
+    rootUser: root
+    rootPwd: xxxx
+    dbName: test
+    user: mongo
+    userPwd: user-xxxx
+
+ingress:
+  enabled: true
+  host: dev1.app.domain.net
+  root: /dev
+
+log:
+  host: dev.log.service
+  port: 9090
+
+proxy:
+  enabled: true
+  host: proxy.demo.com
+  noProxy: localhost, 127.0.0.1, 0.0.0.0, app.demo.domain.net
+  port: 8080
